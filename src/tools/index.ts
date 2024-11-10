@@ -1,14 +1,16 @@
 import { Elysia } from "elysia";
 import fs from "fs";
+import path from "path";
 
 const BASE_URL = process.env.MAKIMA_BASEURL || "http://localhost:7777";
+const TOOLS_API_URL = `${BASE_URL}/tool`; // The correct endpoint for tool operations
 
-async function setupRemoteTool(tool: {
+async function setupRemoteTool(toolDetails: {
   name: string;
   description: string;
   endpoint: string;
   method: string;
-  parameters?: {
+  params?: {
     type: string;
     properties: Record<
       string,
@@ -20,129 +22,91 @@ async function setupRemoteTool(tool: {
     >;
     required?: string[];
   };
-}) {
-  const token = process.env.MAKIMA_KEY;
-
-  if (!token) {
-    console.error("MAKIMA_KEY is not set in the environment variables.");
-    return;
-  }
-
-  if (tool.parameters) {
-    if (!tool.parameters.type) {
-      throw new Error(
-        `The 'type' property is required in the parameters schema.`,
-      );
-    }
-
-    for (const key in tool.parameters.properties) {
-      if (!tool.parameters.properties[key].type) {
-        throw new Error(
-          `Parameter ${key} is missing a required 'type' property in properties.`,
-        );
-      }
-    }
-  } else {
-    tool.parameters = {
-      type: "object",
-      properties: {}, // Ensure parameters is an object if not provided
-    };
-  }
-
+}): Promise<void> {
   try {
-    // Check if the tool already exists
-    const response = await fetch(`${BASE_URL}/tools?name=${tool.name}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
+    // Check if the tool exists
+    const response = await fetch(`${TOOLS_API_URL}?name=${toolDetails.name}`);
 
     if (response.ok) {
-      const existingTool = await response.json();
+      const existingTools = await response.json();
+      const existingTool = existingTools.find(
+        (tool: any) => tool.name === toolDetails.name,
+      );
 
-      // Check if any properties have changed
-      const hasChanges =
-        existingTool.description !== tool.description ||
-        existingTool.method !== tool.method ||
-        JSON.stringify(existingTool.parameters) !==
-        JSON.stringify(tool.parameters) ||
-        existingTool.endpoint !== tool.endpoint;
+      if (existingTool) {
+        // Check if any properties have changed
+        const hasChanges =
+          existingTool.description !== toolDetails.description ||
+          existingTool.method !== toolDetails.method ||
+          JSON.stringify(existingTool.params) !==
+          JSON.stringify(toolDetails.params) ||
+          existingTool.endpoint !== toolDetails.endpoint;
 
-      if (hasChanges) {
-        // Update the tool if there are changes
-        const updateResponse = await fetch(`${BASE_URL}/tools`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(tool),
+        if (hasChanges) {
+          // Update the tool if there are changes
+          const updateResponse = await fetch(
+            `${TOOLS_API_URL}/${existingTool.id}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(toolDetails),
+            },
+          );
+
+          if (!updateResponse.ok) {
+            throw new Error(`Failed to update tool: ${toolDetails.name}`);
+          }
+          console.log(`Updated tool: ${toolDetails.name}`);
+        } else {
+          console.log(`Tool ${toolDetails.name} is already up-to-date.`);
+        }
+      } else {
+        // Create the tool if it doesn't exist
+        const createResponse = await fetch(`${TOOLS_API_URL}/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toolDetails),
         });
 
-        if (!updateResponse.ok) {
-          throw new Error(
-            `Failed to update tool: ${tool.name}, ${await updateResponse.text()}`,
-          );
+        if (!createResponse.ok) {
+          throw new Error(`Failed to create tool: ${toolDetails.name}`);
         }
-
-        console.log(`Updated tool: ${tool.name}`);
-      } else {
-        console.log(`Tool ${tool.name} is already up-to-date.`);
+        console.log(`Registered tool: ${toolDetails.name}`);
       }
-    } else if (response.status === 404) {
-      // Register the tool if it doesn't exist
-      const registerResponse = await fetch(`${BASE_URL}/tools`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(tool),
-      });
-
-      if (!registerResponse.ok) {
-        throw new Error(
-          `Failed to register tool: ${tool.name}, ${await registerResponse.text()}`,
-        );
-      }
-
-      console.log(`Registered tool: ${tool.name}`);
     } else {
       throw new Error(
-        `Failed to check if tool exists: ${tool.name}, ${await response.text()}`,
+        `Unexpected response when checking tool: ${toolDetails.name}`,
       );
     }
   } catch (error) {
-    console.error(`Failed to set up tool: ${tool.name}`, error);
+    console.error(`Failed to set up tool: ${toolDetails.name}`, error);
   }
 }
 
 export async function setupRemoteTools() {
   const toolsApp = new Elysia({ prefix: "/tools" });
-  const files = fs.readdirSync(__dirname + "/functions");
+  const functionsDir = path.join(__dirname, "functions");
+  const files = fs.readdirSync(functionsDir);
 
   for (const file of files) {
-    const module = await import(`./functions/${file}`);
+    if (!file.endsWith(".ts") && !file.endsWith(".js")) continue;
 
-    // Check if the module has a 'details' export
+    const module = await import(path.join(functionsDir, file));
+
     if (!module.details) {
       console.warn(`No 'details' export found in ${file}. Skipping...`);
       continue;
     }
 
     const details = module.details;
+    const fileName = path.parse(file).name;
 
-    const tool = {
-      name: details?.summary ?? file.replace(".ts", ""),
-      description: details?.description ?? "No description provided",
-      endpoint:
-        details?.endpoint ??
-        `http://localhost:${process.env.PORT ?? 8888}/tools/${file.replace(".ts", "")}`, // Assuming the route's endpoint follows this pattern
-      method: details?.method ?? "post", // Default to POST
-      parameters: details?.parameters ?? {}, // Default to an empty object if not provided
-      type: details?.type ?? "api",
+    const toolDetails = {
+      name: details.summary ?? fileName,
+      description: details.description ?? "No description provided",
+      endpoint: details.endpoint ?? `${BASE_URL}/tools/${fileName}`,
+      method: details.method ?? "POST",
+      params: details.parameters ?? {},
     };
 
     // Register the route with the Elysia app
@@ -155,12 +119,12 @@ export async function setupRemoteTools() {
     }
 
     // Register or update the tool via API
-    await setupRemoteTool(tool);
+    await setupRemoteTool(toolDetails);
   }
 
   console.log(
     "Registered remote tools:",
-    files.map((file) => file.replace(".js", "")),
+    files.map((file) => path.parse(file).name),
   );
 
   return toolsApp;
