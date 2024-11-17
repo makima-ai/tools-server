@@ -23,59 +23,57 @@ async function setupRemoteTool(toolDetails: {
     required?: string[];
   };
 }): Promise<void> {
+  console.log(`Setting up tool: ${toolDetails.name}`);
+
   try {
     // Check if the tool exists
-    const response = await fetch(`${TOOLS_API_URL}?name=${toolDetails.name}`);
+    const response = await fetch(`${TOOLS_API_URL}/${toolDetails.name}`);
 
     if (response.ok) {
-      const existingTools = await response.json();
-      const existingTool = existingTools.find(
-        (tool: any) => tool.name === toolDetails.name,
-      );
+      const existingTool = await response.json();
 
-      if (existingTool) {
-        // Check if any properties have changed
-        const hasChanges =
-          existingTool.description !== toolDetails.description ||
-          existingTool.method !== toolDetails.method ||
-          JSON.stringify(existingTool.params) !==
-          JSON.stringify(toolDetails.params) ||
-          existingTool.endpoint !== toolDetails.endpoint;
+      // Check if any properties have changed
+      const hasChanges =
+        existingTool.description !== toolDetails.description ||
+        existingTool.method !== toolDetails.method ||
+        JSON.stringify(existingTool.params) !==
+        JSON.stringify(toolDetails.params) ||
+        existingTool.endpoint !== toolDetails.endpoint;
 
-        if (hasChanges) {
-          // Update the tool if there are changes
-          const updateResponse = await fetch(
-            `${TOOLS_API_URL}/${existingTool.id}`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(toolDetails),
-            },
-          );
+      if (hasChanges) {
+        // Update the tool if there are changes
+        const updateResponse = await fetch(
+          `${TOOLS_API_URL}/${existingTool.id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(toolDetails),
+          },
+        );
 
-          if (!updateResponse.ok) {
-            throw new Error(`Failed to update tool: ${toolDetails.name}`);
-          }
-          console.log(`Updated tool: ${toolDetails.name}`);
-        } else {
-          console.log(`Tool ${toolDetails.name} is already up-to-date.`);
+        if (!updateResponse.ok) {
+          throw new Error(`Failed to update tool: ${toolDetails.name}`);
         }
+        console.log(`Updated tool: ${toolDetails.name}`);
       } else {
-        // Create the tool if it doesn't exist
-        const createResponse = await fetch(`${TOOLS_API_URL}/create`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(toolDetails),
-        });
-
-        if (!createResponse.ok) {
-          throw new Error(`Failed to create tool: ${toolDetails.name}`);
-        }
-        console.log(`Registered tool: ${toolDetails.name}`);
+        console.log(`Tool ${toolDetails.name} is already up-to-date.`);
       }
+    } else if (response.status === 404) {
+      // Tool does not exist, create it
+      console.log(`Tool ${toolDetails.name} not found. Creating new tool...`);
+      const createResponse = await fetch(`${TOOLS_API_URL}/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toolDetails),
+      });
+
+      if (!createResponse.ok) {
+        throw new Error(`Failed to create tool: ${toolDetails.name}`);
+      }
+      console.log(`Registered tool: ${toolDetails.name}`);
     } else {
       throw new Error(
-        `Unexpected response when checking tool: ${toolDetails.name}`,
+        `Unexpected response when checking tool: ${toolDetails.name} - Status: ${response.status}`,
       );
     }
   } catch (error) {

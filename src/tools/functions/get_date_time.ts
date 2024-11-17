@@ -6,7 +6,7 @@ async function get_date_time() {
 
 export const details = {
   summary: "get_date_time",
-  description: "Get the current date and time",
+  description: "Get the current date & time",
   endpoint: "http://localhost:8888/tools/get_date_time",
   method: "get",
   // if the method is get, the parameters will be sent as query parameters from makima
