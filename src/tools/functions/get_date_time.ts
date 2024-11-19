@@ -10,9 +10,15 @@ export const details = {
   endpoint: "http://localhost:8888/tools/get_date_time",
   method: "get",
   // if the method is get, the parameters will be sent as query parameters from makima
-  parameters: {
+  params: {
     type: "object",
-    properties: {},
+    properties: {
+      timezone: {
+        type: "string",
+        description: "Timezone",
+        default: "Asia/Kolkata",
+      },
+    },
   },
   type: "api",
 };
@@ -20,7 +26,8 @@ export const details = {
 export default function get_date_time_route(app: Elysia) {
   app.get(
     "/get_date_time",
-    async () => {
+    async ({ body }) => {
+      console.log("get_date_time being called", body);
       return await get_date_time();
     },
     {

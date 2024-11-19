@@ -43,7 +43,7 @@ async function setupRemoteTool(toolDetails: {
       if (hasChanges) {
         // Update the tool if there are changes
         const updateResponse = await fetch(
-          `${TOOLS_API_URL}/${existingTool.id}`,
+          `${TOOLS_API_URL}/${toolDetails.name}`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -52,6 +52,7 @@ async function setupRemoteTool(toolDetails: {
         );
 
         if (!updateResponse.ok) {
+          console.log(updateResponse);
           throw new Error(`Failed to update tool: ${toolDetails.name}`);
         }
         console.log(`Updated tool: ${toolDetails.name}`);
@@ -77,7 +78,11 @@ async function setupRemoteTool(toolDetails: {
       );
     }
   } catch (error) {
-    console.error(`Failed to set up tool: ${toolDetails.name}`, error);
+    console.error(
+      `Failed to set up tool: ${toolDetails.name}`,
+      toolDetails,
+      error,
+    );
   }
 }
 
@@ -104,7 +109,7 @@ export async function setupRemoteTools() {
       description: details.description ?? "No description provided",
       endpoint: details.endpoint ?? `${BASE_URL}/tools/${fileName}`,
       method: details.method ?? "POST",
-      params: details.parameters ?? {},
+      params: details.params ?? {},
     };
 
     // Register the route with the Elysia app
