@@ -37,7 +37,7 @@ async function setupRemoteTool(toolDetails: {
         existingTool.description !== toolDetails.description ||
         existingTool.method !== toolDetails.method ||
         JSON.stringify(existingTool.params) !==
-        JSON.stringify(toolDetails.params) ||
+          JSON.stringify(toolDetails.params) ||
         existingTool.endpoint !== toolDetails.endpoint;
 
       if (hasChanges) {
